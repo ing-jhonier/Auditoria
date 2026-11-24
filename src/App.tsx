@@ -46,7 +46,7 @@ type Activity = {
 };
 type ApiFailure = Error & { status?: number };
 
-// Credencial sintetica visible unicamente en el bundle de desarrollo del laboratorio.
+// Credencial sintetica
 const AUDIT_LAB_CREDENTIAL = (import.meta as ImportMeta & { env: { DEV: boolean } }).env.DEV
   ? { username: "auditoria.lab", password: "cafe123" }
   : null;
@@ -538,15 +538,6 @@ export default function App() {
                   </button>
                 )}
               </div>
-            </div>
-            <div className="banner">
-              <ShieldCheck size={16} />
-              <span>
-                <b>Conectado a la base de datos local</b>
-                <small>
-                  Sesión y operaciones validadas por el backend · SQLite.
-                </small>
-              </span>
             </div>
             {nav === "Actividad" ? (
               <section className="panel activity-full">
