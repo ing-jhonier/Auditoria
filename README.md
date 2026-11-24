@@ -14,7 +14,7 @@ npm install
 npm run dev
 ```
 
-Esto inicia Vite en `http://localhost:5173` y la API en `http://127.0.0.1:3001`. Vite reenvía las solicitudes `/api` al backend.
+Esto inicia Vite en `http://localhost:5173` y la API en `http://127.0.0.1:3000`. Vite reenvia las solicitudes `/api` al backend. Vite reenvía las solicitudes `/api` al backend.
 
 ## Crear y desactivar cuentas
 
@@ -25,7 +25,7 @@ No hay registro publico. Las diez cuentas operativas locales estan documentadas 
 - SQLite se inicializa automáticamente desde `backend/db/schema.sql`.
 - Ruta predeterminada: `backend/data/cafes.sqlite`.
 - Puedes cambiar la ruta con `DB_PATH`.
-- El backend escucha en `127.0.0.1:3001`; configura `API_HOST` y `API_PORT` si necesitas otros valores.
+- El backend escucha en `127.0.0.1:3000`; configura `API_HOST` y `API_PORT` si necesitas otros valores.
 - Cinco fallos de ingreso bloquean durante 15 minutos. El control se guarda en la base local.
 
 ## Contraseñas

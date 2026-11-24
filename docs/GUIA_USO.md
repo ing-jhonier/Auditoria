@@ -19,13 +19,22 @@ npm install
 npm run dev
 ```
 
-Abre `http://localhost:5173` en el navegador. El comando inicia el frontend y la API local. La información se guarda en `backend/data/cafes.sqlite` y permanece después de cerrar o reiniciar la aplicación en ese computador.
+Abre `http://localhost:5173` en el navegador. El frontend usa el puerto 5173 y la API local escucha en `http://127.0.0.1:3000`. La información se guarda en `backend/data/cafes.sqlite` y permanece después de cerrar o reiniciar la aplicación en ese computador.
 
 ## Iniciar sesión
 
 Usa el nombre de usuario y la contraseña asignados. La sesión dura hasta ocho horas, salvo que se cierre antes desde el botón de salida. Cinco intentos fallidos bloquean temporalmente ese usuario durante quince minutos.
 
 La aplicación no tiene registro público. Las cuentas las crea un operador local. Actualmente no hay una pantalla para que cada persona cambie su contraseña; las diez cuentas listadas tienen contraseñas iniciales y deben asignarse cuidadosamente.
+
+## Qué muestra cada sección del menú
+
+- **Resumen:** indicadores generales, los cinco lotes que requieren más atención, el pulso del inventario y actividad reciente.
+- **Lotes:** inventario completo. Permite buscar y filtrar; Bodega y logística también puede registrar lotes.
+- **Reportes:** solo para Gerencia. Presenta la distribución porcentual por estado y el detalle completo que alimenta el análisis.
+- **Actividad:** bitácora de accesos y acciones; también solo para Gerencia.
+
+Las vistas reutilizan los mismos lotes, pero cada sección responde una pregunta distinta: qué atender ahora, qué hay en inventario, cómo se distribuyen los vencimientos y qué acciones quedaron registradas.
 
 ## Qué puede hacer cada rol
 

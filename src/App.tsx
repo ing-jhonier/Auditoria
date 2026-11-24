@@ -107,6 +107,7 @@ export default function App() {
   const [filter, setFilter] = useState("Todos");
   const [modal, setModal] = useState(false);
   const [toast, setToast] = useState("");
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const role = currentUser?.role ?? "Gerencia";
   const isGerencia = role === "Gerencia";
 
@@ -180,6 +181,8 @@ export default function App() {
   };
   const summary =
     nav === "Reportes" && report ? report : { ...counts, total: lots.length };
+  const priorityLots = lots.filter((lot) => lot.state !== "Vigente");
+  const visibleLots = nav === "Resumen" ? priorityLots.slice(0, 5) : nav === "Reportes" ? lots : filtered;
   function note(message: string) {
     setToast(message);
     window.setTimeout(() => setToast(""), 3500);
@@ -214,6 +217,7 @@ export default function App() {
     try {
       await api("/auth/logout", { method: "POST", body: "{}" });
       setCurrentUser(null);
+      setProfileMenuOpen(false);
       setPass("");
       setUser("");
       setNav("Resumen");
@@ -440,8 +444,9 @@ export default function App() {
                 {currentUser.displayName}
                 <small>{role}</small>
               </b>
-              <button aria-label="Cerrar sesión" onClick={logout}>
+              <button type="button" className="logout-button" title="Cerrar sesión" aria-label="Cerrar sesión" onClick={logout}>
                 <LogOut size={16} />
+                <span>Salir</span>
               </button>
             </div>
           </div>
@@ -457,14 +462,36 @@ export default function App() {
               >
                 <Bell size={17} />
               </button>
-              <span className="avatar">
-                {currentUser.displayName
-                  .split(/\s+/)
-                  .map((part) => part[0])
-                  .slice(0, 2)
-                  .join("")
-                  .toUpperCase()}
-              </span>
+              <div className="profile-control">
+                <button
+                  type="button"
+                  className="avatar profile-trigger"
+                  aria-label="Abrir men? de cuenta"
+                  aria-haspopup="menu"
+                  aria-expanded={profileMenuOpen}
+                  title="Abrir men? de cuenta"
+                  onClick={() => setProfileMenuOpen((open) => !open)}
+                >
+                  {currentUser.displayName
+                    .split(/\s+/)
+                    .map((part) => part[0])
+                    .slice(0, 2)
+                    .join("")
+                    .toUpperCase()}
+                </button>
+                {profileMenuOpen && (
+                  <div className="profile-menu" role="menu">
+                    <div className="profile-menu-user">
+                      <b>{currentUser.displayName}</b>
+                      <small>{role}</small>
+                    </div>
+                    <button type="button" role="menuitem" onClick={logout}>
+                      <LogOut size={15} />
+                      <span>{"Cerrar sesi" + String.fromCharCode(243) + "n"}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </span>
           </header>
           <div className="content">
@@ -533,88 +560,110 @@ export default function App() {
               </section>
             ) : (
               <>
-                <div className="stats">
-                  {[
-                    [
-                      summary.total,
-                      "Lotes registrados",
-                      "En la base de datos local",
-                      <Coffee />,
-                      "sample",
-                    ],
-                    [
-                      summary.current,
-                      "Lotes vigentes",
-                      "Dentro de su periodo de consumo",
-                      <Leaf />,
-                      "good",
-                    ],
-                    [
-                      summary.soon,
-                      "Próximos a vencer",
-                      "Requieren seguimiento",
-                      <Timer />,
-                      "soon",
-                    ],
-                    [
-                      summary.expired,
-                      "Lotes vencidos",
-                      "Fuera de fecha de vencimiento",
-                      <TriangleAlert />,
-                      "bad",
-                    ],
-                  ].map(([num, title, sub, icon, kind]) => (
-                    <article className="stat" key={String(title)}>
-                      <span className={`stat-icon ${kind}`}>{icon}</span>
-                      <strong>{String(num).padStart(2, "0")}</strong>
-                      <b>{title}</b>
-                      <small>{sub}</small>
-                    </article>
-                  ))}
-                </div>
-                <div className="columns">
+                {nav !== "Lotes" && (
+                  <div className="stats">
+                    {[
+                      [summary.total, "Lotes registrados", "En la base de datos local", <Coffee />, "sample"],
+                      [summary.current, "Lotes vigentes", "Vencen en más de 30 días", <Leaf />, "good"],
+                      [summary.soon, "Próximos a vencer", "Vencen dentro de 30 días", <Timer />, "soon"],
+                      [summary.expired, "Lotes vencidos", "La fecha de vencimiento pasó", <TriangleAlert />, "bad"],
+                    ].map(([num, title, sub, icon, kind]) => (
+                      <article className="stat" key={String(title)}>
+                        <span className={"stat-icon " + kind}>{icon}</span>
+                        <strong>{String(num).padStart(2, "0")}</strong>
+                        <b>{title}</b>
+                        <small>{sub}</small>
+                      </article>
+                    ))}
+                  </div>
+                )}
+                {nav === "Reportes" && (
+                  <section className="panel report-breakdown">
+                    <div className="panel-head">
+                      <span>
+                        <h2>Distribución de vencimientos</h2>
+                        <p>Proporción de lotes por estado, calculada sobre el inventario actual.</p>
+                      </span>
+                      <em>{summary.total} LOTES</em>
+                    </div>
+                    <div className="report-bars">
+                      {[
+                        ["Vigentes", summary.current, "green"],
+                        ["Próximos a vencer", summary.soon, "amber"],
+                        ["Vencidos", summary.expired, "red"],
+                      ].map(([label, value, tone]) => {
+                        const percentage = summary.total ? Math.round((Number(value) / summary.total) * 100) : 0;
+                        return (
+                          <div className="report-bar-row" key={String(label)}>
+                            <span>{label}</span>
+                            <div className={"report-track " + tone}>
+                              <i style={{ width: String(percentage) + "%" }} />
+                            </div>
+                            <b>{value} <small>{percentage}%</small></b>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <p className="report-note">
+                      {summary.soon + summary.expired
+                        ? (summary.soon + summary.expired) + " lotes necesitan seguimiento por fecha."
+                        : "No hay lotes que requieran seguimiento por vencimiento."}
+                    </p>
+                  </section>
+                )}
+                <div className={"columns " + (nav === "Resumen" ? "" : "single")}>
                   <section className="panel lot-panel">
                     <div className="panel-head">
                       <span>
                         <h2>
-                          {nav === "Reportes"
-                            ? "Reporte de vencimientos"
-                            : "Lotes de café"}
+                          {nav === "Resumen"
+                            ? "Prioridad de vencimientos"
+                            : nav === "Reportes"
+                              ? "Detalle completo del reporte"
+                              : "Inventario de lotes"}
                         </h2>
-                        <p>Seguimiento de fechas de tueste y vencimiento</p>
+                        <p>
+                          {nav === "Resumen"
+                            ? "Lotes vencidos o próximos a vencer, hasta cinco prioritarios."
+                            : nav === "Reportes"
+                              ? "Consulta las fechas y estados que componen el análisis."
+                              : "Busca, filtra y revisa todos los lotes registrados."}
+                        </p>
                       </span>
-                      <button
-                        className="link"
-                        onClick={() => {
-                          setNav("Lotes");
-                          setSearch("");
-                        }}
-                      >
-                        Ver todos <ArrowRight size={14} />
-                      </button>
-                    </div>
-                    <div className="tools">
-                      <label>
-                        <Search size={15} />
-                        <input
-                          placeholder="Buscar lote, café u origen..."
-                          value={search}
-                          onChange={(e) => setSearch(e.target.value)}
-                        />
-                      </label>
-                      <label>
-                        <Filter size={14} />
-                        <select
-                          value={filter}
-                          onChange={(e) => setFilter(e.target.value)}
+                      {nav !== "Lotes" && (
+                        <button
+                          className="link"
+                          onClick={() => {
+                            setNav("Lotes");
+                            setSearch("");
+                            setFilter("Todos");
+                          }}
                         >
-                          <option>Todos</option>
-                          <option>Vigente</option>
-                          <option>Próximo a vencer</option>
-                          <option>Vencido</option>
-                        </select>
-                      </label>
+                          Ir al inventario <ArrowRight size={14} />
+                        </button>
+                      )}
                     </div>
+                    {nav === "Lotes" && (
+                      <div className="tools">
+                        <label>
+                          <Search size={15} />
+                          <input
+                            placeholder="Buscar lote, café u origen..."
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                          />
+                        </label>
+                        <label>
+                          <Filter size={14} />
+                          <select value={filter} onChange={(e) => setFilter(e.target.value)}>
+                            <option>Todos</option>
+                            <option>Vigente</option>
+                            <option>Próximo a vencer</option>
+                            <option>Vencido</option>
+                          </select>
+                        </label>
+                      </div>
+                    )}
                     <div className="table-scroll">
                       <table>
                         <thead>
@@ -627,23 +676,19 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          {filtered.map((lot) => (
+                          {visibleLots.map((lot) => (
                             <tr key={lot.id}>
                               <td>
                                 <b>
                                   {lot.coffee}
-                                  <small>
-                                    {lot.id} · {lot.origin}
-                                  </small>
+                                  <small>{lot.id} · {lot.origin}</small>
                                 </b>
                               </td>
                               <td>{dateLabel(lot.roastDate)}</td>
                               <td>{dateLabel(lot.expiryDate)}</td>
                               <td>{lot.quantity}</td>
                               <td>
-                                <span
-                                  className={`badge ${lot.state === "Vigente" ? "green" : lot.state === "Vencido" ? "red" : "amber"}`}
-                                >
+                                <span className={"badge " + (lot.state === "Vigente" ? "green" : lot.state === "Vencido" ? "red" : "amber")}>
                                   {lot.state}
                                 </span>
                               </td>
@@ -651,93 +696,67 @@ export default function App() {
                           ))}
                         </tbody>
                       </table>
-                      {!filtered.length && (
+                      {!visibleLots.length && (
                         <p className="empty">
                           {dataLoading
-                            ? "Cargando lotes…"
-                            : "No hay lotes que coincidan."}
+                            ? "Cargando lotes..."
+                            : nav === "Resumen"
+                              ? "No hay lotes vencidos ni próximos a vencer."
+                              : nav === "Reportes"
+                                ? "Aún no hay lotes para incluir en el reporte."
+                                : "No hay lotes que coincidan con la búsqueda."}
                         </p>
                       )}
                     </div>
                     <div className="table-foot">
-                      {filtered.length} de {lots.length} lotes · Datos de SQLite
+                      {nav === "Resumen"
+                        ? "Mostrando " + visibleLots.length + " lotes prioritarios de " + lots.length
+                        : nav === "Reportes"
+                          ? visibleLots.length + " lotes incluidos en el detalle del reporte"
+                          : filtered.length + " de " + lots.length + " lotes · Datos de SQLite"}
                     </div>
                   </section>
-                  <aside className="right-col">
-                    <section className="panel pulse">
-                      <small>
-                        <Sprout size={15} /> PULSO DEL INVENTARIO
-                      </small>
-                      <h3>
-                        {lots.length
-                          ? "Tu café, en buen estado."
-                          : "Aún no hay lotes registrados."}
-                      </h3>
-                      <p>
-                        Revisa los lotes próximos a vencer y mantén cada origen
-                        en su punto.
-                      </p>
-                      <div className="progress-caption">
-                        Lotes vigentes{" "}
-                        <b>
+                  {nav === "Resumen" && (
+                    <aside className="right-col">
+                      <section className="panel pulse">
+                        <small><Sprout size={15} /> PULSO DEL INVENTARIO</small>
+                        <h3>
                           {lots.length
-                            ? Math.round((counts.current / lots.length) * 100)
-                            : 0}
-                          %
-                        </b>
-                      </div>
-                      <div className="progress">
-                        <i
-                          style={{
-                            width: `${lots.length ? (counts.current / lots.length) * 100 : 0}%`,
-                          }}
-                        />
-                      </div>
-                      <small>
-                        {counts.current} vigentes <span>·</span>{" "}
-                        {counts.expired} vencidos
-                      </small>
-                    </section>
-                    <section className="panel recent">
-                      <div className="panel-head">
-                        <span>
-                          <h2>Actividad reciente</h2>
-                          <p>Eventos persistidos por el servidor</p>
-                        </span>
-                        <button
-                          onClick={() =>
-                            setNav(isGerencia ? "Actividad" : "Resumen")
-                          }
-                        >
-                          ↗
-                        </button>
-                      </div>
-                      {events.slice(0, 3).map((item, index) => (
-                        <div
-                          className="recent-event"
-                          key={`${item.time}-${index}`}
-                        >
-                          <i className={item.warning ? "warn" : ""} />
-                          <span>
-                            <b>{item.who}</b>
-                            <small>{item.detail}</small>
-                            <time>{item.time}</time>
-                          </span>
+                            ? counts.expired + counts.soon === 0
+                              ? "Inventario bajo control."
+                              : "Hay lotes que requieren atención."
+                            : "Aún no hay lotes registrados."}
+                        </h3>
+                        <p>Revisa los vencimientos y mantén cada origen bajo seguimiento.</p>
+                        <div className="progress-caption">
+                          <span>Vigentes</span>
+                          <b>{lots.length ? Math.round((counts.current / lots.length) * 100) : 0}%</b>
                         </div>
-                      ))}
-                      {!events.length && (
-                        <p className="empty">Sin eventos recientes.</p>
-                      )}
-                      {isGerencia && (
-                        <button
-                          className="link"
-                          onClick={() => setNav("Actividad")}
-                        >
-                          Ver toda la actividad →
-                        </button>
-                      )}
-                    </section>
-                  </aside>
+                        <div className="progress">
+                          <i style={{ width: String(lots.length ? (counts.current / lots.length) * 100 : 0) + "%" }} />
+                        </div>
+                        <small>{counts.current} vigentes <span>·</span> {counts.soon} próximos <span>·</span> {counts.expired} vencidos</small>
+                      </section>
+                      <section className="panel recent">
+                        <div className="panel-head">
+                          <span>
+                            <h2>Actividad reciente</h2>
+                            <p>Eventos registrados por el servidor</p>
+                          </span>
+                          {isGerencia && (
+                            <button className="link" onClick={() => setNav("Actividad")}>Ver bitácora ?</button>
+                          )}
+                        </div>
+                        {events.slice(0, 3).map((item, index) => (
+                          <div className="recent-event" key={item.time + "-" + index}>
+                            <i className={item.warning ? "warn" : ""} />
+                            <span><b>{item.who}</b><small>{item.detail}</small><time>{item.time}</time></span>
+                          </div>
+                        ))}
+                        {!events.length && <p className="empty">Sin eventos recientes.</p>}
+                      </section>
+                    </aside>
+                  )}
                 </div>
               </>
             )}
@@ -847,5 +866,5 @@ function Brand() {
   );
 }
 function CircleHelpIcon() {
-  return <span className="help-icon">?</span>;
+  return <span className="help-icon">·</span>;
 }
