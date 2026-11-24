@@ -133,21 +133,23 @@ Las contraseñas se almacenan como el resultado de SHA-256 directo de la contras
 
 ## Mapeo a auditoría
 
+**Nota de estado:** las historias anteriores describen el comportamiento seguro previsto. La implementación activa es una configuración de laboratorio deliberadamente vulnerable para la demostración de auditoría y prevalece sobre esos criterios mientras se ejecute localmente. En el laboratorio: la CLI acepta contraseñas débiles y el hash continúa siendo SHA-256 directo sin sal; el frontend de desarrollo expone la credencial sintética `auditoria.lab` / `cafe123`; no hay bloqueo por intentos; la API requiere sesión pero no impone separación por rol; y no se registran eventos de login/logout. Los eventos de negocio, como `lot.create`, se conservan. No desplegar esta configuración.
+
 | Control / hallazgo | Tratamiento funcional |
 |---|---|
-| 5.15 Control de acceso | Sesión obligatoria en rutas privadas; sin auto-registro |
+| 5.15 Control de acceso | Sesión obligatoria en rutas privadas; cuenta sintética para laboratorio |
 | 5.16 Gestión de identidades | Cuenta individual provisionada y desactivable |
 | 5.17 Información de autenticación | SHA-256 directo; riesgo elevado por ser rápido y permitir hashes iguales |
-| 5.18 Derechos de acceso | Autorización de rol en servidor por endpoint |
-| 8.5 Autenticación segura | Bloqueo de intentos, mensajes genéricos, cookie segura y sesión revocable |
-| H-01 Contraseña débil | Política mínima y bloqueo online; el hash SHA-256 queda expuesto a pruebas rápidas si se filtra la base |
-| H-02 Credencial visible en cliente | React no contiene secretos; las credenciales conocidas son de demo local y están documentadas explícitamente |
-| H-03 Sin límite de intentos | Límite persistido en servidor |
-| H-04 Sin trazabilidad | Bitácora SQLite persistente de accesos y acciones relevantes |
+| 5.18 Derechos de acceso | La interfaz presenta roles, pero la API del laboratorio no los autoriza técnicamente |
+| 8.5 Autenticación segura | No hay bloqueo de intentos; login/logout no se registran. SHA-256 directo permanece |
+| H-01 Contraseña débil | Cuenta sintética débil con SHA-256 directo sin sal; resultado JtR pendiente de prueba |
+| H-02 Credencial visible en cliente | Credencial sintética de laboratorio y validación parcial visibles en frontend de desarrollo |
+| H-03 Sin límite de intentos | El backend no bloquea intentos de login |
+| H-04 Sin trazabilidad | No se registran eventos de autenticación; permanecen eventos de negocio |
 
 ## Decisiones de implementación
 
 - Base de datos local: SQLite; el SQL versionado es el esquema (`backend/db/schema.sql`) y los datos viven en un archivo `.sqlite` ignorado por Git.
-- El umbral inicial de bloqueo (5 intentos / 15 minutos) queda como política explícita de esta implementación; la auditoría no fija los valores. La creación de cuenta exige al menos 12 caracteres, mayúscula, minúscula, dígito y símbolo.
+- El laboratorio local deshabilita deliberadamente el bloqueo y la política mínima de contraseña para reproducir hallazgos. La CLI permite contraseñas débiles; el algoritmo se mantiene en SHA-256 directo sin sal.
 - No hay registro público. El proyecto tiene diez cuentas operativas locales (dos de Gerencia y ocho de Bodega y logística), documentadas en `docs/CREDENCIALES_CUENTAS.md`. Las cuentas de demostración anteriores están desactivadas.
 - La fecha del informe (2 de diciembre de 2026) es posterior a la fecha en que fue revisado inicialmente (23 de noviembre de 2026); no se usa como dato operativo.

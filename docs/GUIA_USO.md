@@ -23,16 +23,16 @@ Abre `http://localhost:5173` en el navegador. El frontend usa el puerto 5173 y l
 
 ## Iniciar sesión
 
-Usa el nombre de usuario y la contraseña asignados. La sesión dura hasta ocho horas, salvo que se cierre antes desde el botón de salida. Cinco intentos fallidos bloquean temporalmente ese usuario durante quince minutos.
+Para la demostracion local usa `auditoria.lab` con la contrasena `cafe123`. Las demas cuentas operativas conservan las credenciales indicadas en `CREDENCIALES_CUENTAS.md`; no publiques ese archivo.
 
-La aplicación no tiene registro público. Las cuentas las crea un operador local. Actualmente no hay una pantalla para que cada persona cambie su contraseña; las diez cuentas listadas tienen contraseñas iniciales y deben asignarse cuidadosamente.
+La aplicacion no tiene registro publico. La cuenta sintetica `auditoria.lab` se crea al iniciar la API en modo no productivo. La CLI permite contrasenas debiles para esta demostracion y almacena SHA-256 directo sin sal.
 
 ## Qué muestra cada sección del menú
 
 - **Resumen:** indicadores generales, los cinco lotes que requieren más atención, el pulso del inventario y actividad reciente.
 - **Lotes:** inventario completo. Permite buscar y filtrar; Bodega y logística también puede registrar lotes.
 - **Reportes:** solo para Gerencia. Presenta la distribución porcentual por estado y el detalle completo que alimenta el análisis.
-- **Actividad:** bitácora de accesos y acciones; también solo para Gerencia.
+- **Actividad:** muestra eventos de negocio existentes, como la creacion de lotes; no registra accesos de autenticacion en el laboratorio.
 
 Las vistas reutilizan los mismos lotes, pero cada sección responde una pregunta distinta: qué atender ahora, qué hay en inventario, cómo se distribuyen los vencimientos y qué acciones quedaron registradas.
 
@@ -48,9 +48,9 @@ Las vistas reutilizan los mismos lotes, pero cada sección responde una pregunta
 
 - Consultar y filtrar lotes.
 - Revisar el resumen y el reporte de vencimientos.
-- Consultar la actividad reciente y la bitácora de accesos.
+- Consultar los eventos de negocio que muestra la vista Actividad.
 
-Los permisos se verifican en el backend. La interfaz no ofrece a Bodega las secciones de reportes y actividad. La aplicación actual no incluye edición ni eliminación de lotes.
+La interfaz oculta reportes y actividad a Bodega, pero en el laboratorio la API no aplica autorizacion por rol: una sesion valida de Bodega puede invocar esas rutas directamente. Las rutas privadas siguen requiriendo sesion.
 
 ## Registrar un lote
 
@@ -72,10 +72,10 @@ Los contadores y filtros se basan en esos estados. Si todavía no hay lotes, la 
 
 ## Qué significa “Actividad”
 
-La bitácora muestra eventos de autenticación y acciones relevantes guardados por el backend, como inicios de sesión correctos o fallidos, cierres de sesión y creación de lotes. Gerencia puede consultar los últimos cien eventos. No es un registro de turnos laborales.
+La vista puede mostrar eventos de negocio existentes, como creacion de lotes. En el laboratorio no se registran eventos de login correcto, fallido ni logout; por tanto, no es una bitacora de autenticacion.
 
 ## Datos y alcance local
 
 La base SQLite es local al computador y no sincroniza automáticamente con otras instalaciones. Para que varias personas compartan la misma información, el backend y la base tendrían que estar alojados en un servidor accesible para ellas. El frontend por sí solo no comparte la base.
 
-El backend almacena el resultado de SHA-256 para cada contraseña; no guarda la contraseña en claro en SQLite. Si alguien copia la base de datos, puede probar contraseñas rápidamente. Las contraseñas iniciales sí aparecen en texto claro en el archivo de credenciales, que debe mantenerse privado y no publicarse. Las cuentas que ya estaban en la base antes del cambio deben volver a provisionarse con contraseñas nuevas.
+El backend almacena SHA-256 directo sin sal para las contrasenas; el campo de sal compatible con la base queda vacio. El algoritmo es rapido y una contrasena debil puede ser vulnerable a prueba offline si se obtiene la base. Las contrasenas operativas aparecen en texto claro en el archivo de credenciales: no lo publiques.

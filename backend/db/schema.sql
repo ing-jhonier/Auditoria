@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS users (
  display_name TEXT NOT NULL,
  role TEXT NOT NULL CHECK(role IN ('Bodega y logística','Gerencia')),
  password_algorithm TEXT NOT NULL CHECK(password_algorithm='sha256'),
+ password_salt TEXT NOT NULL DEFAULT '', -- vacio intencional: SHA-256 directo sin sal
  password_hash TEXT NOT NULL,
  active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
  created_at TEXT NOT NULL

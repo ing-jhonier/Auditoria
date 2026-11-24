@@ -46,6 +46,11 @@ type Activity = {
 };
 type ApiFailure = Error & { status?: number };
 
+// Credencial sintetica visible unicamente en el bundle de desarrollo del laboratorio.
+const AUDIT_LAB_CREDENTIAL = (import.meta as ImportMeta & { env: { DEV: boolean } }).env.DEV
+  ? { username: "auditoria.lab", password: "cafe123" }
+  : null;
+
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   let response: Response;
   try {
@@ -194,8 +199,17 @@ export default function App() {
       setError("Completa tu usuario y contraseña para continuar.");
       return;
     }
-    setSubmitting(true);
     setError("");
+    if (
+      AUDIT_LAB_CREDENTIAL &&
+      user.trim().toLowerCase() === AUDIT_LAB_CREDENTIAL.username &&
+      pass !== AUDIT_LAB_CREDENTIAL.password
+    ) {
+      setError("Usuario o contrase\u00f1a incorrectos.");
+      setPass("");
+      return;
+    }
+    setSubmitting(true);
     try {
       const result = await api<{ user: User }>("/auth/login", {
         method: "POST",
@@ -359,8 +373,8 @@ export default function App() {
                 Las cuentas son creadas por el operador local del aplicativo.
               </p>
               <div className="account-note">
-                <ShieldCheck size={16} /> La contraseña se verifica en el
-                servidor; el navegador no almacena credenciales.
+                <ShieldCheck size={16} /> El acceso de laboratorio incluye una
+                credencial sintética visible en la interfaz local.
               </div>
             </div>
             <div className="static-note">
@@ -868,3 +882,4 @@ function Brand() {
 function CircleHelpIcon() {
   return <span className="help-icon">·</span>;
 }
+
