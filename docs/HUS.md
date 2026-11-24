@@ -10,7 +10,7 @@ No hay registro público. Las cuentas las provisiona un operador local con rol d
 
 ## Requisito criptográfico acordado
 
-La auditoría solicita contraseñas almacenadas mediante hash con sal y nunca en texto plano. El requisito acordado para este proyecto es **SHA-256 directo con una sal aleatoria única por cuenta**. SHA-256 es un hash, no cifrado reversible. Se guardan el algoritmo, la sal y el resultado; nunca la contraseña ni un hash calculado en el navegador como sustituto de ella. Esta decisión mantiene SHA-256 directo como se solicitó, pero no es una protección robusta para contraseñas: SHA-256 es rápido y permite probar grandes cantidades de candidatos si se copia la base de datos. La sal evita tablas precalculadas y hashes idénticos, pero no hace más lento cada intento. OWASP desaconseja SHA-256 directo para almacenar contraseñas y recomienda algoritmos adaptativos como Argon2id, bcrypt o PBKDF2.
+Las contraseñas se almacenan como el resultado de SHA-256 directo de la contraseña. SHA-256 es un hash, no cifrado reversible. Se guardan el algoritmo y el resultado; nunca la contraseña ni un hash calculado en el navegador como sustituto de ella. SHA-256 es rápido y permite probar candidatos offline si se copia la base de datos; contraseñas iguales producen el mismo hash. Las cuentas creadas con el método anterior deben volver a provisionarse, ya que sus hashes no son compatibles.
 
 ## Roles
 
@@ -103,7 +103,7 @@ La auditoría solicita contraseñas almacenadas mediante hash con sal y nunca en
 **Criterios de aceptación**
 
 1. Una herramienta CLI local solicita correo/usuario, nombre, rol y contraseña sin eco en terminal.
-2. La herramienta deriva y guarda solo el hash SHA-256, sal y algoritmo.
+2. La herramienta deriva y guarda solo el hash SHA-256 y el algoritmo.
 3. Usuario/correo es único; rol solo acepta Bodega/logística o Gerencia.
 4. No se exponen contraseñas ni hashes en listados, errores o logs.
 5. No existe registro público. Las diez cuentas operativas iniciales y sus roles se documentan en `docs/CREDENCIALES_CUENTAS.md`; las contraseñas se deben cambiar y entregar a sus responsables antes de operar con datos reales.
@@ -137,10 +137,10 @@ La auditoría solicita contraseñas almacenadas mediante hash con sal y nunca en
 |---|---|
 | 5.15 Control de acceso | Sesión obligatoria en rutas privadas; sin auto-registro |
 | 5.16 Gestión de identidades | Cuenta individual provisionada y desactivable |
-| 5.17 Información de autenticación | SHA-256 directo con sal aleatoria; riesgo residual por ser rápido |
+| 5.17 Información de autenticación | SHA-256 directo; riesgo elevado por ser rápido y permitir hashes iguales |
 | 5.18 Derechos de acceso | Autorización de rol en servidor por endpoint |
 | 8.5 Autenticación segura | Bloqueo de intentos, mensajes genéricos, cookie segura y sesión revocable |
-| H-01 Contraseña débil | Política mínima, bloqueo online y sal; el hash sigue expuesto a cracking rápido si se filtra la base |
+| H-01 Contraseña débil | Política mínima y bloqueo online; el hash SHA-256 queda expuesto a pruebas rápidas si se filtra la base |
 | H-02 Credencial visible en cliente | React no contiene secretos; las credenciales conocidas son de demo local y están documentadas explícitamente |
 | H-03 Sin límite de intentos | Límite persistido en servidor |
 | H-04 Sin trazabilidad | Bitácora SQLite persistente de accesos y acciones relevantes |
@@ -151,8 +151,3 @@ La auditoría solicita contraseñas almacenadas mediante hash con sal y nunca en
 - El umbral inicial de bloqueo (5 intentos / 15 minutos) queda como política explícita de esta implementación; la auditoría no fija los valores. La creación de cuenta exige al menos 12 caracteres, mayúscula, minúscula, dígito y símbolo.
 - No hay registro público. El proyecto tiene diez cuentas operativas locales (dos de Gerencia y ocho de Bodega y logística), documentadas en `docs/CREDENCIALES_CUENTAS.md`. Las cuentas de demostración anteriores están desactivadas.
 - La fecha del informe (2 de diciembre de 2026) es posterior a la fecha en que fue revisado inicialmente (23 de noviembre de 2026); no se usa como dato operativo.
-
-
-
-
-

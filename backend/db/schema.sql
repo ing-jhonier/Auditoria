@@ -1,11 +1,10 @@
-﻿PRAGMA foreign_keys = ON;
+PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS users (
  id INTEGER PRIMARY KEY,
  username TEXT NOT NULL UNIQUE COLLATE NOCASE,
  display_name TEXT NOT NULL,
  role TEXT NOT NULL CHECK(role IN ('Bodega y logística','Gerencia')),
  password_algorithm TEXT NOT NULL CHECK(password_algorithm='sha256'),
- password_salt TEXT NOT NULL,
  password_hash TEXT NOT NULL,
  active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
  created_at TEXT NOT NULL

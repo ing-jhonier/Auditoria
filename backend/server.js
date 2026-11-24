@@ -1,4 +1,4 @@
-﻿import { createServer } from "node:http";
+import { createServer } from "node:http";
 import { createHash, randomBytes } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { extname, resolve, sep } from "node:path";
@@ -23,7 +23,7 @@ const nowIso = () => new Date().toISOString();
 const hashToken = (value) => createHash("sha256").update(value).digest("hex");
 const statements = {
   user: db.prepare(
-    "SELECT id,username,display_name,role,password_salt,password_hash,active FROM users WHERE username=? COLLATE NOCASE",
+    "SELECT id,username,display_name,role,password_hash,active FROM users WHERE username=? COLLATE NOCASE",
   ),
   throttle: db.prepare(
     "SELECT attempts,blocked_until FROM login_throttles WHERE login_key=?",
@@ -212,8 +212,8 @@ async function handle(req, res) {
       statements.clearThrottle.run(loginKey);
     const user = statements.user.get(username);
     const valid = user
-      ? await verifyPassword(password, user.password_salt, user.password_hash)
-      : await verifyPassword(password, dummy.salt, dummy.hash);
+      ? await verifyPassword(password, user.password_hash)
+      : await verifyPassword(password, dummy.hash);
     if (!user || !user.active || !valid) {
       const blockedUntil = new Date(
         Date.now() + BLOCK_MINUTES * 60000,

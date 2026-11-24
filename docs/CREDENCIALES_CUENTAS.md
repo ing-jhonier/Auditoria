@@ -17,4 +17,4 @@ Estas son las diez cuentas operativas creadas para el proyecto local Cafés del 
 
 Las contraseñas son iniciales y únicas por cuenta. Entrégalas individualmente a sus responsables y cámbialas antes de usar estas cuentas con datos o procesos reales. Este archivo contiene secretos en texto claro: mantenlo fuera de repositorios públicos y limita su acceso.
 
-El backend almacena SHA-256 con una sal aleatoria individual; nunca guarda las contraseñas en claro. Base local: `backend/data/cafes.sqlite`.
+El backend almacena el resultado de SHA-256 para cada contraseña y nunca guarda las contraseñas en claro. Base local: backend/data/cafes.sqlite. Las cuentas que ya estaban en la base antes del cambio deben volver a provisionarse con contraseñas nuevas.

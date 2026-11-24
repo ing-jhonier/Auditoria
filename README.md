@@ -30,7 +30,7 @@ No hay registro publico. Las diez cuentas operativas locales estan documentadas 
 
 ## Contraseñas
 
-Por requisito del proyecto, se almacena `SHA-256(sal aleatoria || separador || contraseña)` con una sal diferente por cuenta; el navegador nunca calcula ni guarda el hash. SHA-256 es un hash, no cifrado. SHA-256 directo es rápido y no es resistente a ataques offline si alguien copia la base de datos; la sal no corrige esa limitación. Esta decisión queda registrada en [docs/HUS.md](docs/HUS.md) para que el alcance y el riesgo sean visibles.
+El backend almacena el resultado de SHA-256 de cada contraseña. Nunca guarda la contraseña en claro; el navegador tampoco calcula ni recibe el hash. SHA-256 es un hash, no cifrado, y permite probar contraseñas rápidamente si alguien copia la base de datos. Las cuentas creadas con el método anterior deben volver a provisionarse porque sus hashes no son compatibles. El método queda documentado en [docs/HUS.md](docs/HUS.md).
 
 ## Construcción y producción
 
@@ -43,5 +43,3 @@ Para servir también el frontend compilado desde la API, define `NODE_ENV=produc
 ## Historias de usuario
 
 Las HUs, criterios de aceptación, trazabilidad ISO y límites funcionales están en [docs/HUS.md](docs/HUS.md).
-
-

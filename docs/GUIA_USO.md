@@ -1,4 +1,4 @@
-﻿# Guía de uso — Cafés del Pacífico
+# Guía de uso — Cafés del Pacífico
 
 ## ¿Para qué sirve?
 
@@ -78,4 +78,4 @@ La bitácora muestra eventos de autenticación y acciones relevantes guardados p
 
 La base SQLite es local al computador y no sincroniza automáticamente con otras instalaciones. Para que varias personas compartan la misma información, el backend y la base tendrían que estar alojados en un servidor accesible para ellas. El frontend por sí solo no comparte la base.
 
-Las contraseñas se almacenan como SHA-256 con una sal aleatoria individual, según la decisión del proyecto; no se guarda la contraseña en claro en SQLite. Las contraseñas sí aparecen en texto claro en el archivo de credenciales, que debe mantenerse privado y no publicarse.
+El backend almacena el resultado de SHA-256 para cada contraseña; no guarda la contraseña en claro en SQLite. Si alguien copia la base de datos, puede probar contraseñas rápidamente. Las contraseñas iniciales sí aparecen en texto claro en el archivo de credenciales, que debe mantenerse privado y no publicarse. Las cuentas que ya estaban en la base antes del cambio deben volver a provisionarse con contraseñas nuevas.
