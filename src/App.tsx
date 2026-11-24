@@ -373,8 +373,8 @@ export default function App() {
                 Las cuentas son creadas por el operador local del aplicativo.
               </p>
               <div className="account-note">
-                <ShieldCheck size={16} /> El acceso de laboratorio incluye una
-                credencial sintética visible en la interfaz local.
+                <ShieldCheck size={16} /> Acceso para las cuentas creadas por el
+                operador local.
               </div>
             </div>
             <div className="static-note">
