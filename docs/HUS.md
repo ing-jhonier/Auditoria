@@ -1,134 +1,158 @@
-﻿# Historias de usuario — Control de vencimientos
+# Historias de usuario — Control de vencimientos
 
-## Contexto y alcance
+## Contexto y arquitectura
 
-Aplicativo independiente de Cafés del Pacífico S.A.S. para que Bodega y logística registren fechas de tueste y vencimiento por lote, y Gerencia consulte cuáles lotes están vigentes o vencidos. Este documento traduce la auditoría entregada a requisitos de interfaz.
+Aplicativo independiente de Cafés del Pacífico S.A.S. para que Bodega y logística registre fechas de tueste y vencimiento por lote, y Gerencia consulte lotes vigentes y vencidos.
 
-El proyecto es exclusivamente un frontend estático. No tiene servidor, autenticación real, persistencia, protección de datos ni bitácora durable. Las interacciones se ejecutan localmente y se reinician al recargar.
+El repositorio contiene dos partes desplegables como una aplicación monolítica: `src/` es el frontend Vite/React/TypeScript y `backend/` es la API Node.js. La API persiste usuarios, sesiones, lotes y actividad en SQLite local. `backend/db/schema.sql` define el esquema y el archivo SQLite se crea localmente al iniciar. Vite reenvía `/api` a la API en desarrollo para conservar la misma interfaz.
+
+No hay registro público. Las cuentas las provisiona un operador local con rol definido. Los roles se validan en el servidor; ocultar acciones en React no constituye autorización.
+
+## Requisito criptográfico acordado
+
+La auditoría solicita contraseñas almacenadas mediante hash con sal y nunca en texto plano. El requisito acordado para este proyecto es **SHA-256 directo con una sal aleatoria única por cuenta**. SHA-256 es un hash, no cifrado reversible. Se guardan el algoritmo, la sal y el resultado; nunca la contraseña ni un hash calculado en el navegador como sustituto de ella. Esta decisión mantiene SHA-256 directo como se solicitó, pero no es una protección robusta para contraseñas: SHA-256 es rápido y permite probar grandes cantidades de candidatos si se copia la base de datos. La sal evita tablas precalculadas y hashes idénticos, pero no hace más lento cada intento. OWASP desaconseja SHA-256 directo para almacenar contraseñas y recomienda algoritmos adaptativos como Argon2id, bcrypt o PBKDF2.
 
 ## Roles
 
-- **Bodega y logística:** registrar lotes y consultar sus estados de demostración.
-- **Gerencia:** consultar lotes y reportes visuales.
-- **Responsable del aplicativo:** rol conceptual de administración; el informe no define consola ni permisos administrativos específicos.
+- **Bodega y logística:** iniciar sesión y registrar lotes.
+- **Gerencia:** iniciar sesión, consultar todos los lotes, reportes y actividad de accesos.
+- **Operador local:** crear cuentas con identidad y rol asignados; no hay formulario público de alta.
 
-## HU-01 — Ingresar a la pantalla de acceso
+## HU-01 — Iniciar sesión con una cuenta individual
 
-**Como** integrante de Bodega y logística o Gerencia, **quiero** identificarme en la pantalla de ingreso, **para** acceder al espacio de trabajo de mi perfil.
-
-**Criterios de aceptación**
-
-1. Presenta usuario/correo, contraseña, mostrar/ocultar contraseña y acción de ingreso.
-2. Si faltan campos, informa cuáles completar antes de continuar.
-3. El error de acceso es genérico; no revela si el usuario o contraseña eran incorrectos.
-4. Los errores se anuncian y el formulario muestra un estado de bloqueo ilustrativo.
-5. Hay un acceso de demostración para explorar ambos perfiles sin presentarlo como validación real.
-6. La pantalla indica que el prototipo no verifica credenciales ni protege datos.
-
-**Verificación manual:** enviar campos vacíos, credenciales de ejemplo y entrar mediante ambos perfiles demo.
-
-## HU-02 — Explorar el tablero según el perfil
-
-**Como** usuario de demostración, **quiero** ver las opciones asociadas a Bodega y logística o Gerencia, **para** entender la separación funcional esperada.
+**Como** integrante de Bodega/logística o Gerencia, **quiero** autenticarme con mi cuenta individual, **para** ingresar a las funciones que corresponden a mi rol.
 
 **Criterios de aceptación**
 
-1. El tablero muestra el perfil seleccionado.
-2. Bodega y logística puede abrir el registro de lotes.
-3. Gerencia puede consultar los lotes y reportes.
-4. La navegación permite ver resumen, lotes y actividad ilustrativa.
-5. Se aclara que ocultar opciones en el cliente no constituye autorización técnica.
+1. El formulario conserva el diseño actual y envía usuario/correo y contraseña a `POST /api/auth/login` por HTTPS en despliegue.
+2. El servidor verifica la contraseña contra su hash SHA-256 y devuelve una cookie de sesión HttpOnly; el cliente nunca recibe ni persiste el hash.
+3. Credenciales inválidas producen una respuesta genérica, sin indicar si la cuenta existe.
+4. Una cuenta inactiva o bloqueada no obtiene sesión.
+5. Cinco intentos fallidos consecutivos bloquean temporalmente la cuenta por 15 minutos; un ingreso correcto reinicia el contador. El límite se valida y persiste en servidor.
+6. Se registra el resultado del inicio de sesión con fecha/hora y cuenta asociada cuando pueda identificarse, sin almacenar la contraseña.
+7. La interfaz elimina el selector de rol demo y refleja el rol devuelto por el servidor.
+8. No existe acceso de demostración que omita la autenticación.
 
-**Verificación manual:** explorar los perfiles y comparar sus opciones visibles.
+**Verificación:** ingresar con cuenta habilitada, contraseña incorrecta, cuenta inexistente, cuenta bloqueada y perfil inactivo; revisar cookie y evento de auditoría.
 
-## HU-03 — Registrar un lote
+## HU-02 — Cerrar y recuperar la sesión
 
-**Como** integrante de Bodega y logística, **quiero** introducir los datos de un lote, **para** ilustrar el registro de tueste y vencimiento.
-
-**Criterios de aceptación**
-
-1. El formulario solicita identificador, nombre del café, origen, fecha de tueste, fecha de vencimiento y cantidad.
-2. Los campos obligatorios no pueden enviarse vacíos.
-3. La fecha de vencimiento debe ser posterior a la de tueste.
-4. Un lote correcto aparece en la tabla durante la sesión y se confirma visualmente.
-5. El estado se muestra como vigente o vencido según las fechas del navegador.
-6. Se identifica el alta como demostrativa y no persistente.
-
-**Verificación manual:** probar campos vacíos, fechas invertidas y un lote válido; recargar para confirmar que no persiste.
-
-## HU-04 — Consultar lotes y vencimientos
-
-**Como** integrante de Gerencia, **quiero** consultar los lotes y distinguir los vigentes de los vencidos, **para** revisar el estado del inventario.
+**Como** usuario autenticado, **quiero** cerrar mi sesión y conservarla de forma segura durante su vigencia, **para** proteger el acceso en el dispositivo.
 
 **Criterios de aceptación**
 
-1. La tabla presenta identificador, café/origen, fechas de tueste y vencimiento, cantidad y estado.
-2. El estado usa texto y un indicador visual, no solo color.
-3. La búsqueda encuentra por identificador, café u origen.
-4. El filtro permite consultar todos los estados, vigentes, próximos a vencer o vencidos.
-5. Las tarjetas resumen reflejan el conteo de los lotes de ejemplo y agregados en sesión.
-6. Se identifica que los datos son de muestra; no se afirma su exactitud operativa.
+1. La sesión se valida en servidor y se almacena en SQLite; el navegador recibe solo un identificador en cookie HttpOnly, SameSite=Strict y Secure en producción.
+2. La API expone `GET /api/auth/session` para restaurar sesión al cargar la página.
+3. `POST /api/auth/logout` invalida la sesión del lado del servidor y limpia la cookie.
+4. Las rutas privadas devuelven 401 si no hay sesión válida.
+5. Inicio y cierre de sesión quedan registrados; expiración y cierre no muestran datos privados.
 
-**Verificación manual:** combinar búsqueda y filtros y contrastar los totales con las filas.
+## HU-03 — Aplicar permisos por rol
 
-## HU-05 — Representar intentos fallidos y bloqueo
-
-**Como** responsable del aplicativo, **quiero** ver una respuesta de acceso fallido y un estado de bloqueo, **para** ilustrar los controles recomendados en la auditoría.
+**Como** responsable del aplicativo, **quiero** que cada rol se autorice en la API, **para** impedir operaciones fuera de sus funciones aunque se invoquen directamente los endpoints.
 
 **Criterios de aceptación**
 
-1. Enviar datos no vacíos en el formulario simula un intento no validado.
-2. El mensaje no revela cuál dato habría sido correcto.
-3. Tras tres intentos se muestra un bloqueo demostrativo y se explica cómo reiniciar la vista.
-4. Se informa que el contador solo vive en memoria del navegador y no limita intentos reales.
-5. El umbral de tres es una decisión visual de prototipo, no una política establecida por el informe.
+1. Todas las rutas privadas requieren sesión válida.
+2. Bodega/logística puede crear lotes.
+3. Gerencia puede consultar lotes, resumen y actividad.
+4. Las acciones denegadas devuelven 403 y no modifican datos.
+5. El perfil del cliente procede de la sesión autenticada, nunca de un rol enviado libremente por React.
 
-**Verificación manual:** hacer tres intentos, confirmar el mensaje y recargar para reiniciar.
+## HU-04 — Registrar y persistir lotes
 
-## HU-06 — Consultar actividad ilustrativa
-
-**Como** usuario o responsable, **quiero** ver eventos recientes de ejemplo, **para** entender cómo podría presentarse la trazabilidad.
+**Como** integrante de Bodega y logística, **quiero** registrar un lote con sus fechas, **para** mantener el inventario de vencimientos actualizado.
 
 **Criterios de aceptación**
 
-1. La actividad presenta actor, perfil, acción y hora ilustrativos.
-2. Los accesos y fallos de la sesión se agregan a la vista local.
-3. La interfaz identifica los eventos como demostrativos y no persistentes.
-4. No se afirma que exista una bitácora de seguridad real.
+1. Se mantienen los campos actuales: identificador, nombre del café, origen, fecha de tueste, vencimiento y cantidad.
+2. El servidor valida campos obligatorios, formato, identificador único y que el vencimiento sea posterior al tueste.
+3. Solo Bodega/logística puede crear lotes.
+4. La creación se guarda en SQLite y aparece tras recargar y volver a consultar.
+5. El servidor calcula el estado del lote a partir de la fecha actual; no confía en el estado enviado por el cliente.
+6. Las operaciones válidas se registran como eventos de auditoría sin datos de credenciales.
 
-**Verificación manual:** iniciar acceso demo, generar fallo y comprobar que ambos se muestran; recargar para confirmar que desaparecen.
+## HU-05 — Consultar lotes y reportes
 
-## HU-07 — Usar el prototipo en móvil y escritorio
-
-**Como** usuario, **quiero** que la interfaz se adapte a mi pantalla, **para** utilizar los flujos de demostración desde móvil o escritorio.
+**Como** integrante de Gerencia, **quiero** consultar todos los lotes y sus estados, **para** revisar cuáles están vigentes y vencidos.
 
 **Criterios de aceptación**
 
-1. Login, tablero, formularios y tabla se adaptan a pantallas estrechas y amplias.
-2. Los controles tienen etiquetas comprensibles y foco visible.
-3. Los estados se comunican con texto además de color.
-4. La tabla puede desplazarse horizontalmente en móvil sin desbordar la página.
+1. `GET /api/lots` requiere sesión válida y devuelve datos persistidos para el tablero operacional. El endpoint `GET /api/reports/expiry` requiere rol Gerencia.
+2. Búsqueda y filtros por estado pueden aplicarse en frontend sobre el resultado o mediante parámetros validados de API.
+3. El resumen vigente/próximo/vencido coincide con los lotes y las fechas actuales.
+4. Datos, estados y errores se muestran en la interfaz existente; se contemplan carga, error y lista vacía.
+5. La interfaz no usa los lotes de muestra como información productiva.
 
-**Verificación manual:** revisar visualmente a 375 px y en escritorio.
+## HU-06 — Mantener trazabilidad de accesos
 
-## Trazabilidad con auditoría
+**Como** Gerencia, **quiero** consultar una bitácora de autenticación, **para** revisar quién ingresó y cuándo y detectar intentos fallidos.
 
-| Control / hallazgo | Representación en interfaz | Límite del frontend estático |
-|---|---|---|
-| 5.15 Control de acceso | Login y selector de perfil demo | No aplica una política de acceso |
-| 5.16 Gestión de identidades | Campo de usuario y perfil visible | No administra cuentas |
-| 5.17 Información de autenticación | Campo de contraseña y aviso; no se almacena | No existe hash ni almacenamiento de contraseña |
-| 5.18 Derechos de acceso | Vistas diferenciadas por rol | No existe autorización técnica |
-| 8.5 Autenticación segura | Error genérico y bloqueo ilustrativo | No hay autenticación, cifrado ni límite efectivo |
-| H-01 Contraseña débil | No se usan credenciales reales | No se puede imponer política de contraseña sin autenticación |
-| H-02 Credencial en cliente | El código no incorpora contraseñas de acceso | Todo frontend entregado al navegador es inspeccionable |
-| H-03 Sin bloqueo de intentos | Se muestra un bloqueo simulado tras tres fallos | Reiniciable; no limita solicitudes reales |
-| H-04 Sin trazabilidad | Lista local ilustrativa | No es una bitácora persistente ni evidencia de auditoría |
+**Criterios de aceptación**
 
-## Decisiones y datos pendientes
+1. SQLite conserva éxitos y fallos de login, logout y creación de lote con hora del servidor, usuario cuando sea identificable, tipo de evento y resultado.
+2. Nunca se guardan contraseñas, hashes de contraseña, cookies ni tokens en eventos.
+3. `GET /api/activity` requiere rol Gerencia.
+4. La actividad se conserva tras reiniciar el backend.
+5. Una falla al registrar auditoría no debe revelar secretos al cliente.
 
-- La auditoría recomienda longitud y complejidad mínimas, pero no define sus valores. No se inventa una política real.
-- El umbral de tres intentos sirve solo para ilustrar el estado de bloqueo; el informe no especifica cantidad ni duración.
-- Los lotes son ficticios y sus fechas no representan inventario operativo.
-- El informe está fechado el 2 de diciembre de 2026, fecha posterior a la fecha actual del entorno (23 de noviembre de 2026). La interfaz no presenta la fecha del informe como vigencia del sistema.
-- El informe es un diagnóstico acotado al login, no una certificación ISO.
+## HU-07 — Gestionar cuentas localmente
+
+**Como** operador local, **quiero** crear y desactivar cuentas con un rol, **para** controlar quién puede utilizar el aplicativo sin auto-registro público.
+
+**Criterios de aceptación**
+
+1. Una herramienta CLI local solicita correo/usuario, nombre, rol y contraseña sin eco en terminal.
+2. La herramienta deriva y guarda solo el hash SHA-256, sal y algoritmo.
+3. Usuario/correo es único; rol solo acepta Bodega/logística o Gerencia.
+4. No se exponen contraseñas ni hashes en listados, errores o logs.
+5. No existe registro público. Las diez cuentas operativas iniciales y sus roles se documentan en `docs/CREDENCIALES_CUENTAS.md`; las contraseñas se deben cambiar y entregar a sus responsables antes de operar con datos reales.
+
+## HU-08 — Ejecutar frontend y backend en el mismo repositorio
+
+**Como** desarrollador, **quiero** iniciar frontend y API desde el mismo proyecto, **para** trabajar con una arquitectura monolítica local.
+
+**Criterios de aceptación**
+
+1. Scripts documentados instalan, ejecutan y construyen ambas partes.
+2. Vite reenvía `/api` al backend en desarrollo.
+3. La API valida datos y errores de forma consistente, usa consultas parametrizadas y no sirve la base de datos ni archivos secretos como estáticos.
+4. La configuración distingue desarrollo y producción; errores internos no devuelven stack traces al navegador.
+5. SQLite local se inicializa a partir del esquema SQL versionado; el archivo con datos no se versiona.
+
+## HU-09 — Conservar presentación y adaptación visual
+
+**Como** usuario, **quiero** conservar la presentación del login y del tablero, **para** usar una interfaz familiar mientras los datos pasan a ser reales.
+
+**Criterios de aceptación**
+
+1. Se conserva paleta, tipografía, estructura visual y diseño responsivo actuales.
+2. Se reemplazan textos de “demostración” por estados reales de sesión, carga, error y confirmación.
+3. Los estados de lotes se anuncian con texto además de color.
+4. Login, lotes, filtros y vistas siguen utilizables en móvil y escritorio.
+
+## Mapeo a auditoría
+
+| Control / hallazgo | Tratamiento funcional |
+|---|---|
+| 5.15 Control de acceso | Sesión obligatoria en rutas privadas; sin auto-registro |
+| 5.16 Gestión de identidades | Cuenta individual provisionada y desactivable |
+| 5.17 Información de autenticación | SHA-256 directo con sal aleatoria; riesgo residual por ser rápido |
+| 5.18 Derechos de acceso | Autorización de rol en servidor por endpoint |
+| 8.5 Autenticación segura | Bloqueo de intentos, mensajes genéricos, cookie segura y sesión revocable |
+| H-01 Contraseña débil | Política mínima, bloqueo online y sal; el hash sigue expuesto a cracking rápido si se filtra la base |
+| H-02 Credencial visible en cliente | React no contiene secretos; las credenciales conocidas son de demo local y están documentadas explícitamente |
+| H-03 Sin límite de intentos | Límite persistido en servidor |
+| H-04 Sin trazabilidad | Bitácora SQLite persistente de accesos y acciones relevantes |
+
+## Decisiones de implementación
+
+- Base de datos local: SQLite; el SQL versionado es el esquema (`backend/db/schema.sql`) y los datos viven en un archivo `.sqlite` ignorado por Git.
+- El umbral inicial de bloqueo (5 intentos / 15 minutos) queda como política explícita de esta implementación; la auditoría no fija los valores. La creación de cuenta exige al menos 12 caracteres, mayúscula, minúscula, dígito y símbolo.
+- No hay registro público. El proyecto tiene diez cuentas operativas locales (dos de Gerencia y ocho de Bodega y logística), documentadas en `docs/CREDENCIALES_CUENTAS.md`. Las cuentas de demostración anteriores están desactivadas.
+- La fecha del informe (2 de diciembre de 2026) es posterior a la fecha en que fue revisado inicialmente (23 de noviembre de 2026); no se usa como dato operativo.
+
+
+
+
+

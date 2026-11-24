@@ -1476,3 +1476,6 @@ td b small {
     font-size: 7px;
   }
 }
+
+.auth-loading{min-height:100vh;display:flex;align-items:center;justify-content:center;gap:12px;background:#f7f5ef;color:#6f432b;font:600 13px 'DM Sans',sans-serif}.auth-loading svg{color:#477252}.account-note{display:flex;align-items:flex-start;gap:9px;padding:13px;border-radius:8px;background:#f2f1e9;color:#71694f;font-size:10px;line-height:1.55}.account-note svg{flex:none;color:#66815c}
+

@@ -1,4 +1,4 @@
-﻿import { useMemo, useState, type FormEvent } from "react";
+﻿import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   ArrowRight,
   Bell,
@@ -16,226 +16,243 @@ import {
   Plus,
   Search,
   ShieldCheck,
-  Sparkles,
   Sprout,
   Timer,
   TriangleAlert,
   Users,
-  Warehouse,
   X,
 } from "lucide-react";
 
 type Role = "Bodega y logística" | "Gerencia";
-type State = "Vigente" | "Próximo a vencer" | "Vencido";
+type LotState = "Vigente" | "Próximo a vencer" | "Vencido";
+type User = { id: number; username: string; displayName: string; role: Role };
 type Lot = {
   id: string;
   coffee: string;
   origin: string;
-  roast: string;
-  expiry: string;
-  kg: string;
-  state: State;
+  roastDate: string;
+  expiryDate: string;
+  quantity: string;
+  state: LotState;
 };
-type EventItem = {
+type Activity = {
   who: string;
+  role: Role | null;
   detail: string;
   time: string;
-  warning?: boolean;
+  warning: boolean;
+  outcome: "success" | "failure";
+  type: string;
 };
-const samples: Lot[] = [
-  {
-    id: "CP-2026-084",
-    coffee: "Geisha lavado",
-    origin: "Huila · Pitalito",
-    roast: "12 oct, 2026",
-    expiry: "12 abr, 2027",
-    kg: "24 kg",
-    state: "Vigente",
-  },
-  {
-    id: "CP-2026-083",
-    coffee: "Caturra honey",
-    origin: "Nariño · Buesaco",
-    roast: "8 jun, 2026",
-    expiry: "8 dic, 2026",
-    kg: "18 kg",
-    state: "Próximo a vencer",
-  },
-  {
-    id: "CP-2026-079",
-    coffee: "Bourbon rosado",
-    origin: "Cauca · Popayán",
-    roast: "26 abr, 2026",
-    expiry: "26 oct, 2026",
-    kg: "12 kg",
-    state: "Vencido",
-  },
-  {
-    id: "CP-2026-076",
-    coffee: "Castillo natural",
-    origin: "Valle · Sevilla",
-    roast: "19 abr, 2026",
-    expiry: "19 oct, 2026",
-    kg: "32 kg",
-    state: "Vencido",
-  },
-  {
-    id: "CP-2026-072",
-    coffee: "Typica anaeróbico",
-    origin: "Tolima · Planadas",
-    roast: "11 abr, 2026",
-    expiry: "11 oct, 2026",
-    kg: "16 kg",
-    state: "Vencido",
-  },
-];
-const roleList: Role[] = ["Bodega y logística", "Gerencia"];
+type ApiFailure = Error & { status?: number };
+
+async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`/api${path}`, {
+      ...init,
+      credentials: "same-origin",
+      headers: {
+        ...(init.body ? { "Content-Type": "application/json" } : {}),
+        ...init.headers,
+      },
+    });
+  } catch {
+    throw new Error(
+      "No se pudo conectar con el backend local. Confirma que ambos servicios estén iniciados.",
+    );
+  }
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok)
+    throw Object.assign(
+      new Error(data.error || "No se pudo completar la solicitud."),
+      { status: response.status },
+    ) as ApiFailure;
+  return data as T;
+}
+const dateLabel = (value: string) =>
+  new Date(`${value}T00:00:00Z`).toLocaleDateString("es-CO", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+const todayLabel = () =>
+  new Date().toLocaleDateString("es-CO", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    timeZone: "America/Bogota",
+  });
 
 export default function App() {
-  const [role, setRole] = useState<Role>("Gerencia"),
-    [entered, setEntered] = useState(false),
-    [user, setUser] = useState(""),
-    [pass, setPass] = useState(""),
-    [show, setShow] = useState(false),
-    [error, setError] = useState(""),
-    [attempts, setAttempts] = useState(0),
-    [locked, setLocked] = useState(false);
-  const [lots, setLots] = useState(samples),
-    [nav, setNav] = useState("Resumen"),
-    [search, setSearch] = useState(""),
-    [filter, setFilter] = useState("Todos"),
-    [modal, setModal] = useState(false),
-    [toast, setToast] = useState("");
-  const [events, setEvents] = useState<EventItem[]>([
-    {
-      who: "María Fernanda Ríos",
-      detail: "Registró el lote CP-2026-084",
-      time: "Hoy, 9:42 a. m.",
-    },
-    {
-      who: "Andrés Velasco",
-      detail: "Consultó reporte de vencimientos",
-      time: "Hoy, 8:16 a. m.",
-    },
-    {
-      who: "Intento de acceso",
-      detail: "Ingreso fallido · demostración",
-      time: "Ayer, 4:28 p. m.",
-      warning: true,
-    },
-  ]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [user, setUser] = useState("");
+  const [pass, setPass] = useState("");
+  const [show, setShow] = useState(false);
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [lots, setLots] = useState<Lot[]>([]);
+  const [events, setEvents] = useState<Activity[]>([]);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [report, setReport] = useState<{
+    total: number;
+    current: number;
+    soon: number;
+    expired: number;
+  } | null>(null);
+  const [nav, setNav] = useState("Resumen");
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("Todos");
+  const [modal, setModal] = useState(false);
+  const [toast, setToast] = useState("");
+  const role = currentUser?.role ?? "Gerencia";
+  const isGerencia = role === "Gerencia";
+
+  useEffect(() => {
+    api<{ user: User | null }>("/auth/session")
+      .then(({ user: active }) => setCurrentUser(active))
+      .catch((cause: Error) => setError(cause.message))
+      .finally(() => setAuthReady(true));
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setLots([]);
+      setEvents([]);
+      return;
+    }
+    let cancelled = false;
+    setDataLoading(true);
+    Promise.all([
+      api<{ lots: Lot[] }>("/lots"),
+      currentUser.role === "Gerencia"
+        ? api<{ events: Activity[] }>("/activity")
+        : Promise.resolve({ events: [] as Activity[] }),
+    ])
+      .then(([lotData, eventData]) => {
+        if (cancelled) return;
+        setLots(lotData.lots);
+        setEvents(
+          eventData.events.map((event) => ({
+            ...event,
+            warning: event.outcome === "failure",
+          })),
+        );
+      })
+      .catch((cause: Error) => {
+        if (!cancelled) note(cause.message);
+      })
+      .finally(() => {
+        if (!cancelled) setDataLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== "Gerencia" || nav !== "Reportes")
+      return;
+    api<{ total: number; current: number; soon: number; expired: number }>(
+      "/reports/expiry",
+    )
+      .then(setReport)
+      .catch((cause: Error) => note(cause.message));
+  }, [currentUser, nav]);
+
   const filtered = useMemo(
     () =>
       lots.filter(
-        (l) =>
-          `${l.id} ${l.coffee} ${l.origin}`
+        (lot) =>
+          `${lot.id} ${lot.coffee} ${lot.origin}`
             .toLowerCase()
             .includes(search.toLowerCase()) &&
-          (filter === "Todos" || l.state === filter),
+          (filter === "Todos" || lot.state === filter),
       ),
     [lots, search, filter],
   );
   const counts = {
-    current: lots.filter((l) => l.state === "Vigente").length,
-    soon: lots.filter((l) => l.state === "Próximo a vencer").length,
-    expired: lots.filter((l) => l.state === "Vencido").length,
+    current: lots.filter((lot) => lot.state === "Vigente").length,
+    soon: lots.filter((lot) => lot.state === "Próximo a vencer").length,
+    expired: lots.filter((lot) => lot.state === "Vencido").length,
   };
+  const summary =
+    nav === "Reportes" && report ? report : { ...counts, total: lots.length };
   function note(message: string) {
     setToast(message);
-    window.setTimeout(() => setToast(""), 3000);
+    window.setTimeout(() => setToast(""), 3500);
   }
-  function login(e: FormEvent) {
-    e.preventDefault();
+
+  async function login(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     if (!user.trim() || !pass) {
       setError("Completa tu usuario y contraseña para continuar.");
       return;
     }
-    const next = attempts + 1;
-    setAttempts(next);
-    setPass("");
-    setEvents((v) =>
-      [
-        {
-          who: user,
-          detail: "Intento fallido · demostración",
-          time: "Ahora",
-          warning: true,
-        },
-        ...v,
-      ].slice(0, 5),
-    );
-    if (next >= 3) {
-      setLocked(true);
-      setError("Bloqueo temporal simulado. Recarga la página para reiniciar.");
-    } else
-      setError(
-        "No se pudo validar el acceso. Usa el acceso de demostración por perfil.",
-      );
-  }
-  function demo(r: Role) {
-    if (locked) return;
-    setRole(r);
-    setEntered(true);
+    setSubmitting(true);
     setError("");
-    setNav("Resumen");
-    setEvents((v) =>
-      [
-        {
-          who: user || "Usuario de demostración",
-          detail: `Inició sesión como ${r} · demo`,
-          time: "Ahora",
-        },
-        ...v,
-      ].slice(0, 5),
-    );
-  }
-  function add(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const d = new FormData(e.currentTarget),
-      id = String(d.get("id")).trim(),
-      coffee = String(d.get("coffee")).trim(),
-      origin = String(d.get("origin")).trim(),
-      roast = String(d.get("roast")),
-      expiry = String(d.get("expiry")),
-      kg = String(d.get("kg")).trim(),
-      rd = new Date(`${roast}T12:00:00`),
-      ed = new Date(`${expiry}T12:00:00`);
-    if (ed <= rd) {
-      note("El vencimiento debe ser posterior al tueste.");
-      return;
-    }
-    const fmt = (x: Date) =>
-      x.toLocaleDateString("es-CO", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
+    try {
+      const result = await api<{ user: User }>("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ username: user.trim(), password: pass }),
       });
-    setLots((v) => [
-      {
-        id,
-        coffee,
-        origin,
-        roast: fmt(rd),
-        expiry: fmt(ed),
-        kg,
-        state: ed < new Date() ? "Vencido" : "Vigente",
-      },
-      ...v,
-    ]);
-    setEvents((v) =>
-      [
-        {
-          who: user || "Usuario demo",
-          detail: `Registró ${id} · demostración`,
-          time: "Ahora",
-        },
-        ...v,
-      ].slice(0, 5),
-    );
-    setModal(false);
-    note("Lote agregado a esta sesión de demostración.");
+      setCurrentUser(result.user);
+      setPass("");
+      setNav("Resumen");
+    } catch (cause) {
+      const failure = cause as ApiFailure;
+      setError(failure.status === 429 ? failure.message : failure.message);
+      setPass("");
+    } finally {
+      setSubmitting(false);
+    }
   }
-  if (!entered)
+
+  async function logout() {
+    try {
+      await api("/auth/logout", { method: "POST", body: "{}" });
+      setCurrentUser(null);
+      setPass("");
+      setUser("");
+      setNav("Resumen");
+      setError("");
+    } catch (cause) {
+      note((cause as Error).message);
+    }
+  }
+
+  async function add(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const payload = {
+      id: String(form.get("id")).trim(),
+      coffee: String(form.get("coffee")).trim(),
+      origin: String(form.get("origin")).trim(),
+      roastDate: String(form.get("roast")),
+      expiryDate: String(form.get("expiry")),
+      quantity: String(form.get("kg")).trim(),
+    };
+    try {
+      await api("/lots", { method: "POST", body: JSON.stringify(payload) });
+      const result = await api<{ lots: Lot[] }>("/lots");
+      setLots(result.lots);
+      setModal(false);
+      note("Lote guardado en la base de datos local.");
+    } catch (cause) {
+      note((cause as Error).message);
+    }
+  }
+
+  if (!authReady)
+    return (
+      <div className="auth-loading">
+        <Coffee size={22} />
+        <span>Conectando con Cafés del Pacífico…</span>
+      </div>
+    );
+  if (!currentUser)
     return (
       <div className="login">
         <section className="hero">
@@ -285,7 +302,7 @@ export default function App() {
                     placeholder="nombre@cafesdelpacifico.co"
                     value={user}
                     onChange={(e) => setUser(e.target.value)}
-                    disabled={locked}
+                    disabled={submitting}
                   />
                 </div>
               </label>
@@ -299,13 +316,15 @@ export default function App() {
                     placeholder="Ingresa tu contraseña"
                     value={pass}
                     onChange={(e) => setPass(e.target.value)}
-                    disabled={locked}
+                    disabled={submitting}
                   />
                   <button
                     type="button"
                     className="eye"
                     onClick={() => setShow(!show)}
-                    aria-label="Mostrar u ocultar contraseña"
+                    aria-label={
+                      show ? "Ocultar contraseña" : "Mostrar contraseña"
+                    }
                   >
                     {show ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
@@ -317,64 +336,49 @@ export default function App() {
                   {error}
                 </div>
               )}
-              <button className="primary wide" disabled={locked}>
-                Ingresar <ArrowRight size={16} />
+              <button className="primary wide" disabled={submitting}>
+                {submitting ? (
+                  "Validando…"
+                ) : (
+                  <>
+                    Ingresar <ArrowRight size={16} />
+                  </>
+                )}
               </button>
             </form>
             <div className="demo">
               <div className="demo-heading">
-                <strong>Acceso de demostración</strong>
-                <span>PROTOTIPO</span>
+                <strong>Acceso para el personal</strong>
+                <span>CUENTA INDIVIDUAL</span>
               </div>
-              <p>Elige un perfil para explorar la interfaz.</p>
-              <div className="role-cards">
-                {roleList.map((r) => (
-                  <button
-                    className={role === r ? "selected" : ""}
-                    key={r}
-                    onClick={() => setRole(r)}
-                  >
-                    <span>
-                      {r === "Gerencia" ? (
-                        <Users size={16} />
-                      ) : (
-                        <Warehouse size={16} />
-                      )}
-                    </span>
-                    <b>
-                      {r}
-                      <small>
-                        {r === "Gerencia"
-                          ? "Consulta y reportes"
-                          : "Registro de lotes"}
-                      </small>
-                    </b>
-                    <i />
-                  </button>
-                ))}
+              <p>
+                Las cuentas son creadas por el operador local del aplicativo.
+              </p>
+              <div className="account-note">
+                <ShieldCheck size={16} /> La contraseña se verifica en el
+                servidor; el navegador no almacena credenciales.
               </div>
-              <button
-                className="demo-go"
-                disabled={locked}
-                onClick={() => demo(role)}
-              >
-                Explorar como {role} <ArrowRight size={15} />
-              </button>
             </div>
             <div className="static-note">
-              <ShieldCheck size={15} />
-              Demostración estática: no verifica credenciales ni protege datos.
+              <LockKeyhole size={15} /> La sesión se administra en el backend
+              local.
             </div>
           </div>
           <footer className="login-footer">
             © 2026 Cafés del Pacífico S.A.S.{" "}
             <span>
-              <LockKeyhole size={12} /> Acceso de demostración
+              <LockKeyhole size={12} /> Acceso controlado
             </span>
           </footer>
         </main>
       </div>
     );
+
+  const navItems = [
+    "Resumen",
+    "Lotes",
+    ...(isGerencia ? ["Reportes", "Actividad"] : []),
+  ];
   return (
     <>
       <div className="shell">
@@ -390,12 +394,7 @@ export default function App() {
           </div>
           <small className="side-label">MENÚ PRINCIPAL</small>
           <nav>
-            {[
-              "Resumen",
-              "Lotes",
-              ...(role === "Gerencia" ? ["Reportes"] : []),
-              "Actividad",
-            ].map((item) => (
+            {navItems.map((item) => (
               <button
                 className={nav === item ? "on" : ""}
                 key={item}
@@ -419,24 +418,29 @@ export default function App() {
             <div className="help">
               <CircleHelpIcon />
               <b>¿Necesitas ayuda?</b>
-              <p>Consulta la guía rápida del aplicativo.</p>
-              <button onClick={() => note("Guía rápida · demostración")}>
-                Ver guía →
+              <p>Consulta al operador del aplicativo.</p>
+              <button
+                onClick={() =>
+                  note("Contacta al operador local para recibir soporte.")
+                }
+              >
+                Ver ayuda →
               </button>
             </div>
             <div className="signed-user">
-              <span>{role === "Gerencia" ? "AV" : "MR"}</span>
+              <span>
+                {currentUser.displayName
+                  .split(/\s+/)
+                  .map((part) => part[0])
+                  .slice(0, 2)
+                  .join("")
+                  .toUpperCase()}
+              </span>
               <b>
-                {role === "Gerencia" ? "Andrés Velasco" : "María F. Ríos"}
+                {currentUser.displayName}
                 <small>{role}</small>
               </b>
-              <button
-                aria-label="Cerrar sesión"
-                onClick={() => {
-                  setEntered(false);
-                  setPass("");
-                }}
-              >
+              <button aria-label="Cerrar sesión" onClick={logout}>
                 <LogOut size={16} />
               </button>
             </div>
@@ -446,12 +450,20 @@ export default function App() {
           <header className="topbar">
             Aplicativo <i>/</i> <b>{nav}</b>
             <span>
-              Lunes, 23 de noviembre{" "}
-              <button onClick={() => note("No tienes nuevas notificaciones.")}>
+              {todayLabel()}{" "}
+              <button
+                aria-label="Notificaciones"
+                onClick={() => note("No tienes nuevas notificaciones.")}
+              >
                 <Bell size={17} />
               </button>
               <span className="avatar">
-                {role === "Gerencia" ? "AV" : "MR"}
+                {currentUser.displayName
+                  .split(/\s+/)
+                  .map((part) => part[0])
+                  .slice(0, 2)
+                  .join("")
+                  .toUpperCase()}
               </span>
             </span>
           </header>
@@ -461,14 +473,14 @@ export default function App() {
                 <small>● CONTROL DE VENCIMIENTOS</small>
                 <h1>
                   {nav === "Resumen"
-                    ? `Buenos días, ${role === "Gerencia" ? "Andrés" : "María"} 👋`
+                    ? `Buenos días, ${currentUser.displayName.split(" ")[0]} 👋`
                     : nav}
                 </h1>
                 <p>
                   {nav === "Resumen"
                     ? "Aquí tienes el estado de tus lotes de café."
                     : nav === "Actividad"
-                      ? "Actividad reciente de acceso · datos de demostración."
+                      ? "Actividad de acceso registrada por el servidor."
                       : nav === "Reportes"
                         ? "Resumen para consulta de gerencia."
                         : "Registro y seguimiento de lotes."}
@@ -487,66 +499,65 @@ export default function App() {
               </div>
             </div>
             <div className="banner">
-              <Sparkles size={16} />
+              <ShieldCheck size={16} />
               <span>
-                <b>Modo demostración estático</b>
+                <b>Conectado a la base de datos local</b>
                 <small>
-                  Accesos y cambios son locales a esta sesión; no hay
-                  autenticación ni almacenamiento reales.
+                  Sesión y operaciones validadas por el backend · SQLite.
                 </small>
               </span>
-              <button onClick={(e) => e.currentTarget.parentElement?.remove()}>
-                <X size={15} />
-              </button>
             </div>
             {nav === "Actividad" ? (
               <section className="panel activity-full">
                 <div className="panel-head">
                   <span>
                     <h2>Registro de actividad</h2>
-                    <p>Eventos ilustrativos, no persistentes.</p>
+                    <p>Eventos persistidos por el servidor.</p>
                   </span>
-                  <em>DATOS DE MUESTRA</em>
+                  <em>BITÁCORA</em>
                 </div>
-                {events.map((v, i) => (
-                  <div className="event" key={i}>
-                    <i className={v.warning ? "warn" : ""} />
+                {events.map((item, index) => (
+                  <div className="event" key={`${item.time}-${index}`}>
+                    <i className={item.warning ? "warn" : ""} />
                     <b>
-                      {v.who}
-                      <small>{role}</small>
+                      {item.who}
+                      <small>{item.role || "Sin rol asociado"}</small>
                     </b>
-                    <span>{v.detail}</span>
-                    <time>{v.time}</time>
+                    <span>{item.detail}</span>
+                    <time>{item.time}</time>
                   </div>
                 ))}
+                {!events.length && (
+                  <p className="empty">Aún no hay eventos registrados.</p>
+                )}
               </section>
             ) : (
               <>
                 <div className="stats">
                   {[
                     [
-                      lots.length,
+                      summary.total,
                       "Lotes registrados",
-                      "En el inventario de ejemplo",
+                      "En la base de datos local",
                       <Coffee />,
                       "sample",
                     ],
                     [
-                      counts.current,
+                      summary.current,
                       "Lotes vigentes",
                       "Dentro de su periodo de consumo",
                       <Leaf />,
                       "good",
                     ],
                     [
-                      counts.soon,
+                      summary.soon,
                       "Próximos a vencer",
                       "Requieren seguimiento",
                       <Timer />,
                       "soon",
                     ],
                     [
-                      counts.expired,
+                      summary.expired,
                       "Lotes vencidos",
                       "Fuera de fecha de vencimiento",
                       <TriangleAlert />,
@@ -616,24 +627,24 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          {filtered.map((l) => (
-                            <tr key={l.id}>
+                          {filtered.map((lot) => (
+                            <tr key={lot.id}>
                               <td>
                                 <b>
-                                  {l.coffee}
+                                  {lot.coffee}
                                   <small>
-                                    {l.id} · {l.origin}
+                                    {lot.id} · {lot.origin}
                                   </small>
                                 </b>
                               </td>
-                              <td>{l.roast}</td>
-                              <td>{l.expiry}</td>
-                              <td>{l.kg}</td>
+                              <td>{dateLabel(lot.roastDate)}</td>
+                              <td>{dateLabel(lot.expiryDate)}</td>
+                              <td>{lot.quantity}</td>
                               <td>
                                 <span
-                                  className={`badge ${l.state === "Vigente" ? "green" : l.state === "Vencido" ? "red" : "amber"}`}
+                                  className={`badge ${lot.state === "Vigente" ? "green" : lot.state === "Vencido" ? "red" : "amber"}`}
                                 >
-                                  {l.state}
+                                  {lot.state}
                                 </span>
                               </td>
                             </tr>
@@ -641,12 +652,15 @@ export default function App() {
                         </tbody>
                       </table>
                       {!filtered.length && (
-                        <p className="empty">No hay lotes que coincidan.</p>
+                        <p className="empty">
+                          {dataLoading
+                            ? "Cargando lotes…"
+                            : "No hay lotes que coincidan."}
+                        </p>
                       )}
                     </div>
                     <div className="table-foot">
-                      Mostrando {filtered.length} de {lots.length} lotes · Datos
-                      de ejemplo
+                      {filtered.length} de {lots.length} lotes · Datos de SQLite
                     </div>
                   </section>
                   <aside className="right-col">
@@ -654,7 +668,11 @@ export default function App() {
                       <small>
                         <Sprout size={15} /> PULSO DEL INVENTARIO
                       </small>
-                      <h3>Tu café, en buen estado.</h3>
+                      <h3>
+                        {lots.length
+                          ? "Tu café, en buen estado."
+                          : "Aún no hay lotes registrados."}
+                      </h3>
                       <p>
                         Revisa los lotes próximos a vencer y mantén cada origen
                         en su punto.
@@ -684,26 +702,40 @@ export default function App() {
                       <div className="panel-head">
                         <span>
                           <h2>Actividad reciente</h2>
-                          <p>Eventos de ejemplo · sesión local</p>
+                          <p>Eventos persistidos por el servidor</p>
                         </span>
-                        <button onClick={() => setNav("Actividad")}>↗</button>
+                        <button
+                          onClick={() =>
+                            setNav(isGerencia ? "Actividad" : "Resumen")
+                          }
+                        >
+                          ↗
+                        </button>
                       </div>
-                      {events.slice(0, 3).map((v, i) => (
-                        <div className="recent-event" key={i}>
-                          <i className={v.warning ? "warn" : ""} />
+                      {events.slice(0, 3).map((item, index) => (
+                        <div
+                          className="recent-event"
+                          key={`${item.time}-${index}`}
+                        >
+                          <i className={item.warning ? "warn" : ""} />
                           <span>
-                            <b>{v.who}</b>
-                            <small>{v.detail}</small>
-                            <time>{v.time}</time>
+                            <b>{item.who}</b>
+                            <small>{item.detail}</small>
+                            <time>{item.time}</time>
                           </span>
                         </div>
                       ))}
-                      <button
-                        className="link"
-                        onClick={() => setNav("Actividad")}
-                      >
-                        Ver toda la actividad →
-                      </button>
+                      {!events.length && (
+                        <p className="empty">Sin eventos recientes.</p>
+                      )}
+                      {isGerencia && (
+                        <button
+                          className="link"
+                          onClick={() => setNav("Actividad")}
+                        >
+                          Ver toda la actividad →
+                        </button>
+                      )}
                     </section>
                   </aside>
                 </div>
@@ -712,8 +744,7 @@ export default function App() {
             <footer className="foot">
               © 2026 Cafés del Pacífico S.A.S.
               <span>
-                <LockKeyhole size={12} /> Prototipo estático · sin autenticación
-                real
+                <LockKeyhole size={12} /> Sesión protegida por el backend
               </span>
             </footer>
           </div>
@@ -733,22 +764,37 @@ export default function App() {
                 <h2>Registrar nuevo lote</h2>
                 <p>Completa los datos de tu café de origen.</p>
               </span>
-              <button onClick={() => setModal(false)}>
+              <button aria-label="Cerrar" onClick={() => setModal(false)}>
                 <X />
               </button>
             </div>
             <form onSubmit={add}>
               <label>
                 ID del lote
-                <input name="id" placeholder="CP-2026-085" required />
+                <input
+                  name="id"
+                  placeholder="CP-2026-085"
+                  required
+                  maxLength={40}
+                />
               </label>
               <label>
                 Nombre del café
-                <input name="coffee" placeholder="Geisha lavado" required />
+                <input
+                  name="coffee"
+                  placeholder="Geisha lavado"
+                  required
+                  maxLength={120}
+                />
               </label>
               <label>
                 Origen
-                <input name="origin" placeholder="Huila · Pitalito" required />
+                <input
+                  name="origin"
+                  placeholder="Huila · Pitalito"
+                  required
+                  maxLength={160}
+                />
               </label>
               <div className="two">
                 <label>
@@ -762,10 +808,10 @@ export default function App() {
               </div>
               <label>
                 Cantidad
-                <input name="kg" placeholder="24 kg" required />
+                <input name="kg" placeholder="24 kg" required maxLength={40} />
               </label>
               <small className="demo-hint">
-                <Sparkles size={13} /> Se añadirá solo a esta sesión.
+                <ShieldCheck size={13} /> Se guardará en la base SQLite local.
               </small>
               <div className="modal-actions">
                 <button type="button" onClick={() => setModal(false)}>
@@ -803,5 +849,3 @@ function Brand() {
 function CircleHelpIcon() {
   return <span className="help-icon">?</span>;
 }
-
-
